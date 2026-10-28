@@ -1,0 +1,9 @@
+torch
+torchvision
+torchaudio
+torch-geometric
+rdkit
+streamlit
+pandas
+scikit-learn
+matplotlib
