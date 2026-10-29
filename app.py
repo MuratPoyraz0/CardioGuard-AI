@@ -8,6 +8,7 @@ from rdkit.Chem import Draw
 from rdkit.Chem.Draw import SimilarityMaps
 import numpy as np
 from PIL import Image
+from matplotlib import cm
 
 # 1. Page Configuration
 st.set_page_config(
@@ -52,7 +53,7 @@ with st.sidebar:
     st.caption("Paracetamol (Safe / Non-blocker)")
 
 
-# 3. Model Definition (Orijinal 5-Feature Mimarisi)
+# 3. Model Definition
 class GIN(torch.nn.Module):
     def __init__(self, in_channels=5, hidden_channels=64, out_channels=2):
         super(GIN, self).__init__()
@@ -83,7 +84,6 @@ def load_model():
     model = GIN(in_channels=5, hidden_channels=64, out_channels=2)
     state_dict = torch.load("gnn_herg_model.pt", map_location=torch.device('cpu'))
     
-    # Katman ismi eşleme (fc/lin uyumsuzluğu olursa)
     new_state_dict = {}
     for k, v in state_dict.items():
         if k.startswith("fc."):
@@ -103,7 +103,6 @@ def smiles_to_graph(smiles):
         return None
     features = []
     for atom in mol.GetAtoms():
-        # Modelin eğitildiği 5 temelde atom özelliği
         features.append([
             atom.GetAtomicNum(),
             atom.GetDegree(),
@@ -180,8 +179,4 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.caption("Red/Darker highlights indicate atomic sub-structures contributing most to toxicity.")
                     
                     contribs = [float(atom.GetAtomicNum()) for atom in mol.GetAtoms()]
-                    fig = SimilarityMaps.GetSimilarityMapFromWeights(mol, contribs, colorMap='jet')
-                    fig.savefig("xai_map.png", bbox_inches='tight', dpi=200)
-                    
-                    image = Image.open("xai_map.png")
-                    st.image(image, use_container_width=True)
+                    fig = SimilarityMaps.
