@@ -81,10 +81,10 @@ def lookup_reference(mol):
 
 
 # ------------------------------------------------------------------
-# 3. MODEL (Checkpoint boyutları olan [64 -> 32 -> 1] mimarisine ayarlandı)
+# 3. MODEL (Checkpoint boyutlarına göre: fc1 [64, 64], fc2 [2, 64])
 # ------------------------------------------------------------------
 class GIN(torch.nn.Module):
-    def __init__(self, in_channels=5, hidden_channels=64, out_channels=1):
+    def __init__(self, in_channels=5, hidden_channels=64, out_channels=2):
         super().__init__()
         nn1 = torch.nn.Sequential(
             torch.nn.Linear(in_channels, hidden_channels),
@@ -105,9 +105,9 @@ class GIN(torch.nn.Module):
         )
         self.conv3 = GINConv(nn3)
         
-        # Checkpoint: fc1 weight [32, 64], fc2 weight [1, 32]
-        self.fc1 = torch.nn.Linear(64, 32)
-        self.fc2 = torch.nn.Linear(32, 1)
+        # Tam olarak checkpoint içerisindeki boyutlar:
+        self.fc1 = torch.nn.Linear(64, 64)
+        self.fc2 = torch.nn.Linear(64, 2)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
@@ -120,7 +120,6 @@ class GIN(torch.nn.Module):
 
 @st.cache_resource
 def load_model(path="gnn_herg_model.pt"):
-    """Loads the model and reports whether the weights were really loaded."""
     model = GIN()
     if not os.path.exists(path):
         return None, f"File '{path}' not found.", [], []
@@ -177,18 +176,21 @@ def smiles_to_graph(mol):
 
 
 # ------------------------------------------------------------------
-# 5. MODEL PREDICTION + REAL XAI (gradient saliency)
+# 5. MODEL PREDICTION (Softmax ile 2 sınıflı çıktı işleme)
 # ------------------------------------------------------------------
 def model_predict(mol, with_saliency=False):
     data = smiles_to_graph(mol)
     x = data.x.clone().requires_grad_(with_saliency)
     batch = torch.zeros(x.size(0), dtype=torch.long)
     out = model(x, data.edge_index, batch)
-    prob = float(torch.sigmoid(out)[0, 0].detach())
+    
+    # 2 sınıflı modelde 1. indeksi 'blocker' olarak varsayıyoruz
+    prob = float(torch.softmax(out, dim=1)[0, 1].detach())
+    
     saliency = None
     if with_saliency:
         model.zero_grad()
-        out[0, 0].backward()
+        out[0, 1].backward()
         if x.grad is not None:
             saliency = (x.grad * x).sum(dim=1).detach().numpy()
     return prob, saliency
