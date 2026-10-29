@@ -98,15 +98,13 @@ class GIN(torch.nn.Module):
             torch.nn.Linear(hidden_channels, hidden_channels),
         )
         self.conv2 = GINConv(nn2)
-        # Bipolar uyumluluk için hem fc hem lin adlarını destekleyecek şekilde ayarlandı
-        self.fc = torch.nn.Linear(hidden_channels, out_channels)
-        self.lin = self.fc
+        self.lin = torch.nn.Linear(hidden_channels, out_channels)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
         x = global_mean_pool(x, batch)
-        return self.fc(x)
+        return self.lin(x)
 
 
 @st.cache_resource
@@ -120,21 +118,27 @@ def load_model(path="gnn_herg_model.pt"):
         if isinstance(state, dict) and "state_dict" in state:
             state = state["state_dict"]
             
-        # Katman ismi dönüşüm eşlemeleri
+        model_keys = list(model.state_dict().keys())
+        state_items = list(state.items())
         new_state = {}
-        for k, v in state.items():
-            new_key = k
-            if k.startswith("lin."):
-                new_key = k.replace("lin.", "fc.")
-            new_state[new_key] = v
+        
+        # Ağırlık dosyasındaki katman sırasını model ile otomatik eşleştir
+        if len(state_items) == len(model_keys):
+            for (old_k, v), new_k in zip(state_items, model_keys):
+                new_state[new_k] = v
+        else:
+            for k, v in state.items():
+                new_k = k
+                if "fc." in k:
+                    new_k = k.replace("fc.", "lin.")
+                elif k.startswith("fc"):
+                    new_k = k.replace("fc", "lin")
+                new_state[new_k] = v
             
         result = model.load_state_dict(new_state, strict=False)
         missing, unexpected = list(result.missing_keys), list(result.unexpected_keys)
-        
-        # 'lin' ile 'fc' aynı katmana işaret ettiği için lin uyarısını yok sayabiliriz
-        missing = [k for k in missing if not k.startswith("lin.")]
-        
         model.eval()
+        
         if missing:
             return None, f"Some layer weights failed to load: {missing}", missing, unexpected
         return model, None, missing, unexpected
