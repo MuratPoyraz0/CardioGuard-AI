@@ -154,8 +154,8 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                 out = model(graph_data.x, graph_data.edge_index, batch)
                 probs = F.softmax(out, dim=1).detach().numpy()[0]
                 
-                blocker_prob = probs[1]
-                non_blocker_prob = probs[0]
+                blocker_prob = float(probs[1])
+                non_blocker_prob = float(probs[0])
                 
                 st.markdown("---")
                 st.markdown("## 📊 Prediction Results")
@@ -165,8 +165,23 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                 with res_col1:
                     st.markdown("### 🎯 Risk Status")
                     if blocker_prob > 0.5:
-                        st.error(f"⚠️ **HIGH RISK: hERG Blocker**\n\nCalculated Probability: **%{blocker_prob*100:.2f}**")
+                        st.error("⚠️ **HIGH RISK: hERG Blocker**\n\nCalculated Probability: " + str(round(blocker_prob * 100, 2)) + "%")
                     else:
-                        st.success(f"✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: **%{non_blocker_prob*100:.2f}**")
+                        st.success("✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: " + str(round(non_blocker_prob * 100, 2)) + "%")
                     
-                    st.metric("Blocker Probability", f"{blocker_prob:.
+                    st.metric("Blocker Probability", str(round(blocker_prob, 4)))
+                    st.metric("Non-Blocker Probability", str(round(non_blocker_prob, 4)))
+
+                with res_col2:
+                    st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
+                    st.caption("Red/Darker highlights indicate atomic sub-structures contributing most to toxicity.")
+                    
+                    try:
+                        contribs = [float(atom.GetAtomicNum()) for atom in mol.GetAtoms()]
+                        fig, ax = plt.subplots(figsize=(6, 4))
+                        SimilarityMaps.GetSimilarityMapFromWeights(mol, contribs, ax=ax)
+                        st.pyplot(fig)
+                        plt.close(fig)
+                    except Exception:
+                        img = Draw.MolToImage(mol, size=(500, 300))
+                        st.image(img)
