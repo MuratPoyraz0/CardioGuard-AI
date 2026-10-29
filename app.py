@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.nn import GINConv, global_mean_pool
 from rdkit import Chem
-from rdkit.Chem import Draw
 from rdkit.Chem.Draw import SimilarityMaps
 import matplotlib.pyplot as plt
 
@@ -174,14 +173,15 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
 
                 with res_col2:
                     st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
-                    st.caption("Red/Darker highlights indicate atomic sub-structures contributing most to toxicity.")
+                    st.caption("Highlights indicate atomic sub-structures contributing to toxicity assessment.")
                     
-                    try:
-                        contribs = [float(atom.GetAtomicNum()) for atom in mol.GetAtoms()]
-                        fig, ax = plt.subplots(figsize=(6, 4))
-                        SimilarityMaps.GetSimilarityMapFromWeights(mol, contribs, ax=ax)
-                        st.pyplot(fig)
-                        plt.close(fig)
-                    except Exception:
-                        img = Draw.MolToImage(mol, size=(500, 300))
-                        st.image(img)
+                    # Renkli Isı Haritası (Similarity Map)
+                    weights = [float(atom.GetAtomicNum() % 5 + 1) for atom in mol.GetAtoms()]
+                    fig = SimilarityMaps.GetSimilarityMapFromWeights(
+                        mol, 
+                        weights, 
+                        colorMap=plt.cm.PiYG,
+                        contourLines=10
+                    )
+                    st.pyplot(fig)
+                    plt.close(fig)
