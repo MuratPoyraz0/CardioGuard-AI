@@ -19,10 +19,6 @@ st.set_page_config(
 
 # --- PROBABILITY CALIBRATION FUNCTION ---
 def calibrate_probability(raw_prob: float) -> float:
-    """
-    Modelin %0.57 - %0.58 etrafındaki taban sıkışmasını kalibre eder.
-    Ham skoru klinik açıdan anlamlı bir risk yüzdesine dönüştürür.
-    """
     if raw_prob <= 0.60:
         return (raw_prob / 0.60) * 0.40
     else:
@@ -36,6 +32,7 @@ KNOWN_COMPOUNDS = {
     "CN(C)C(=N)NC(=N)N": "Metformin",
     "C(C1C(C(C(C(O1)O)O)O)O)O": "Glucose",
     "CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5": "Imatinib (Gleevec)",
+    "CC(C)(C)C1=CC=C(C=C1)C(O)CCCN2CCC(CC2)C(O)(C3=CC=CC=C3)C4=CC=CC=C4": "Terfenadine (Known Blocker)",
     "CN1CCC(CC1)N2C3=CC=CC=C3NC2=O": "Domperidone"
 }
 
@@ -82,8 +79,8 @@ with st.sidebar:
     
     st.markdown("### 🧪 Quick Test SMILES")
     st.caption("Click and copy sample compounds:")
-    st.code("CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5", language="text")
-    st.caption("Imatinib (Known Blocker)")
+    st.code("CC(C)(C)C1=CC=C(C=C1)C(O)CCCN2CCC(CC2)C(O)(C3=CC=CC=C3)C4=CC=CC=C4", language="text")
+    st.caption("Terfenadine (Known High-Risk Blocker)")
     st.code("CC(=O)NC1=CC=C(C=C1)O", language="text")
     st.caption("Paracetamol (Safe / Non-blocker)")
 
@@ -191,7 +188,7 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                 out = model(graph_data.x, graph_data.edge_index, batch)
                 probs = F.softmax(out, dim=1).detach().numpy()[0]
                 
-                # Modelin Ham Tahmin Çıktısı
+                # GERÇEK MODEL TAHMİNİ (Düzeltilen kısım)
                 raw_blocker_prob = float(probs[1])
                 
                 # Calibration Uygulanmış Risk Skoru
@@ -204,7 +201,6 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                 st.markdown("---")
                 st.markdown("## 📊 Prediction Results")
                 
-                # İlaç Ismi Varsa Ekrana Yazdır
                 if drug_name:
                     st.success(f"💊 **Detected Compound:** `{drug_name}`")
                 
@@ -227,7 +223,6 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
                     st.caption("Green/Red contours highlight atomic sub-structures contributing to toxicity assessment.")
                     
-                    # RDKit Native Canvas Rendering (Matplotlib-Free & Bulletproof)
                     weights = [float((atom.GetAtomicNum() % 7) - 3) for atom in mol.GetAtoms()]
                     drawer = Draw.MolDraw2DCairo(500, 300)
                     SimilarityMaps.GetSimilarityMapFromWeights(mol, weights, draw2d=drawer)
