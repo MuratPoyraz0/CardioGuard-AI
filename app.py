@@ -4,8 +4,10 @@ import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.nn import GINConv, global_mean_pool
 from rdkit import Chem
+from rdkit.Chem import Draw
 from rdkit.Chem.Draw import SimilarityMaps
-import matplotlib.pyplot as plt
+import io
+from PIL import Image
 
 # 1. Page Configuration
 st.set_page_config(
@@ -174,11 +176,12 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
                     st.caption("Green/Red contours highlight atomic sub-structures contributing to toxicity assessment.")
                     
-                    # Matplotlib figürünü temiz açıp kaydetme yöntemi
+                    # RDKit Native Canvas Rendering (Matplotlib-Free & Bulletproof)
                     weights = [float((atom.GetAtomicNum() % 7) - 3) for atom in mol.GetAtoms()]
-                    plt.figure(figsize=(6, 4))
-                    SimilarityMaps.GetSimilarityMapFromWeights(mol, weights)
-                    plt.savefig("xai_map.png", bbox_inches='tight', dpi=150)
-                    plt.close()
+                    drawer = Draw.MolDraw2DCairo(500, 300)
+                    SimilarityMaps.GetSimilarityMapFromWeights(mol, weights, draw2d=drawer)
+                    drawer.FinishDrawing()
                     
-                    st.image("xai_map.png")
+                    img_bytes = drawer.GetDrawingText()
+                    img = Image.open(io.BytesIO(img_bytes))
+                    st.image(img)
