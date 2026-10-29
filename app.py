@@ -89,7 +89,7 @@ def load_model():
 model, device = load_model()
 
 # Arayüz Girdisi
-smiles_input = st.text_input("Molekül SMILES Kodunu Girin:", "CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5")
+smiles_input = st.text_input("Molekül SMILES Kodunu Girin:", "")
 
 if st.button("Toksisite Analizi Yap"):
     data, mol = smiles_to_graph(smiles_input)
