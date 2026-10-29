@@ -16,10 +16,14 @@ st.set_page_config(
 )
 
 # 2. Sidebar Navigation
+# 2. Sidebar Navigation
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/dna.png", width=70)
-    st.title("CardioGuard AI")
+    st.markdown("## 🧬 CardioGuard AI")
     st.caption("Advanced GNN Molecular Safety Platform")
+    
+    st.divider()
+    
+    st.markdown("### 🛠️ Model Details")
     
     st.divider()
     
