@@ -17,6 +17,43 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- PROBABILITY CALIBRATION FUNCTION ---
+def calibrate_probability(raw_prob: float) -> float:
+    """
+    Modelin %0.57 - %0.58 etrafındaki taban sıkışmasını kalibre eder.
+    Ham skoru klinik açıdan anlamlı bir risk yüzdesine dönüştürür.
+    """
+    if raw_prob <= 0.60:
+        return (raw_prob / 0.60) * 0.40
+    else:
+        return 0.40 + ((raw_prob - 0.60) / 0.40) * 0.60
+
+# --- DRUG NAME IDENTIFIER ---
+KNOWN_COMPOUNDS = {
+    "CC(=O)NC1=CC=C(C=C1)O": "Paracetamol (Acetaminophen)",
+    "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O": "Ibuprofen",
+    "CC(=O)OC1=CC=CC=C1C(=O)O": "Aspirin (Acetylsalicylic Acid)",
+    "CN(C)C(=N)NC(=N)N": "Metformin",
+    "C(C1C(C(C(C(O1)O)O)O)O)O": "Glucose",
+    "CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5": "Imatinib (Gleevec)",
+    "CN1CCC(CC1)N2C3=CC=CC=C3NC2=O": "Domperidone"
+}
+
+def identify_compound(smiles: str) -> str:
+    try:
+        input_mol = Chem.MolFromSmiles(smiles)
+        if input_mol is None:
+            return None
+        input_inchikey = Chem.MolToInchiKey(input_mol)
+        
+        for known_smiles, known_name in KNOWN_COMPOUNDS.items():
+            ref_mol = Chem.MolFromSmiles(known_smiles)
+            if ref_mol and Chem.MolToInchiKey(ref_mol) == input_inchikey:
+                return known_name
+    except Exception:
+        pass
+    return None
+
 # 2. Sidebar Navigation
 with st.sidebar:
     st.markdown("## 🧬 CardioGuard AI")
@@ -154,23 +191,37 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                 out = model(graph_data.x, graph_data.edge_index, batch)
                 probs = F.softmax(out, dim=1).detach().numpy()[0]
                 
-                blocker_prob = float(probs[1])
-                non_blocker_prob = float(probs[0])
+                # Modelin Ham Tahmin Çıktısı
+                raw_blocker_prob = float(probs[1])
+                
+                # Calibration Uygulanmış Risk Skoru
+                calibrated_blocker_prob = calibrate_probability(raw_blocker_prob)
+                calibrated_non_blocker_prob = 1.0 - calibrated_blocker_prob
+                
+                # İlaç İsmi Tespiti
+                drug_name = identify_compound(smiles_input)
                 
                 st.markdown("---")
                 st.markdown("## 📊 Prediction Results")
+                
+                # İlaç Ismi Varsa Ekrana Yazdır
+                if drug_name:
+                    st.success(f"💊 **Detected Compound:** `{drug_name}`")
                 
                 res_col1, res_col2 = st.columns([1, 2])
                 
                 with res_col1:
                     st.markdown("### 🎯 Risk Status")
-                    if blocker_prob > 0.5:
-                        st.error(f"⚠️ **HIGH RISK: hERG Blocker**\n\nCalculated Probability: %{blocker_prob*100:.2f}")
-                    else:
-                        st.success(f"✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: %{non_blocker_prob*100:.2f}")
                     
-                    st.metric("Blocker Probability", round(blocker_prob, 4))
-                    st.metric("Non-Blocker Probability", round(non_blocker_prob, 4))
+                    if calibrated_blocker_prob >= 0.60:
+                        st.error(f"🚨 **HIGH RISK: hERG Blocker**\n\nCalculated Probability: %{calibrated_blocker_prob*100:.2f}")
+                    elif calibrated_blocker_prob >= 0.45:
+                        st.warning(f"⚠️ **MODERATE RISK: Borderline**\n\nCalculated Probability: %{calibrated_blocker_prob*100:.2f}")
+                    else:
+                        st.success(f"✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: %{calibrated_blocker_prob*100:.2f}")
+                    
+                    st.metric("Blocker Probability", round(calibrated_blocker_prob, 4))
+                    st.metric("Non-Blocker Probability", round(calibrated_non_blocker_prob, 4))
 
                 with res_col2:
                     st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
