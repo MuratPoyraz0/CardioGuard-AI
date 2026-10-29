@@ -51,7 +51,7 @@ st.markdown(
 )
 
 # ------------------------------------------------------------------
-# 2. LITERATURE REFERENCES (labels only, NOT probabilities)
+# 2. LITERATURE REFERENCES
 # ------------------------------------------------------------------
 REFERENCE_LABELS = {
     "CC(=O)NC1=CC=C(C=C1)O": ("Paracetamol", "Non-blocker"),
@@ -81,10 +81,10 @@ def lookup_reference(mol):
 
 
 # ------------------------------------------------------------------
-# 3. MODEL (Checkpoint boyutlarına göre: fc1 [64, 64], fc2 [2, 64])
+# 3. MODEL (Checkpoint boyutlarına tam uyumlu: 64 -> 32 -> 1)
 # ------------------------------------------------------------------
 class GIN(torch.nn.Module):
-    def __init__(self, in_channels=5, hidden_channels=64, out_channels=2):
+    def __init__(self, in_channels=5, hidden_channels=64, out_channels=1):
         super().__init__()
         nn1 = torch.nn.Sequential(
             torch.nn.Linear(in_channels, hidden_channels),
@@ -105,9 +105,9 @@ class GIN(torch.nn.Module):
         )
         self.conv3 = GINConv(nn3)
         
-        # Tam olarak checkpoint içerisindeki boyutlar:
-        self.fc1 = torch.nn.Linear(64, 64)
-        self.fc2 = torch.nn.Linear(64, 2)
+        # Checkpoint içindeki ağırlıklarla birebir eşleşen katmanlar
+        self.fc1 = torch.nn.Linear(64, 32)
+        self.fc2 = torch.nn.Linear(32, 1)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
@@ -176,7 +176,7 @@ def smiles_to_graph(mol):
 
 
 # ------------------------------------------------------------------
-# 5. MODEL PREDICTION (Softmax ile 2 sınıflı çıktı işleme)
+# 5. MODEL PREDICTION (1 çıktı olduğu için tekrar Sigmoid'e döndük)
 # ------------------------------------------------------------------
 def model_predict(mol, with_saliency=False):
     data = smiles_to_graph(mol)
@@ -184,13 +184,13 @@ def model_predict(mol, with_saliency=False):
     batch = torch.zeros(x.size(0), dtype=torch.long)
     out = model(x, data.edge_index, batch)
     
-    # 2 sınıflı modelde 1. indeksi 'blocker' olarak varsayıyoruz
-    prob = float(torch.softmax(out, dim=1)[0, 1].detach())
+    # Tek çıkışlı regresyon/olasılık (Sigmoid)
+    prob = float(torch.sigmoid(out)[0, 0].detach())
     
     saliency = None
     if with_saliency:
         model.zero_grad()
-        out[0, 1].backward()
+        out[0, 0].backward()
         if x.grad is not None:
             saliency = (x.grad * x).sum(dim=1).detach().numpy()
     return prob, saliency
