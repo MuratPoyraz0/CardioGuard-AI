@@ -9,7 +9,7 @@ from rdkit.Chem.Draw import SimilarityMaps
 import numpy as np
 from PIL import Image
 
-# 1. Sayfa Konfigürasyonu
+# 1. Page Configuration
 st.set_page_config(
     page_title="CardioGuard AI - hERG Toxicity",
     page_icon="🧬",
@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Sol Yan Panel (Sidebar)
+# 2. Sidebar Navigation
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/dna.png", width=70)
     st.title("CardioGuard AI")
@@ -28,7 +28,7 @@ with st.sidebar:
     st.markdown("### 🛠️ Model Details")
     st.markdown("""
     - **Architecture:** Graph Isomorphism Network (GIN)
-    - **Embeddings:** Atom & Bond Feature Graphs
+    - **Embeddings:** Atom & Bond Feature Graphs (5-dim)
     - **Explainable AI:** Similarity Attribution Mapping
     - **Dataset:** TDC hERG Target Benchmark
     """)
@@ -45,16 +45,16 @@ with st.sidebar:
     st.divider()
     
     st.markdown("### 🧪 Quick Test SMILES")
-    st.caption("Kopyalayıp deneyebileceğiniz örnekler:")
+    st.caption("Click and copy sample compounds:")
     st.code("CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5", language="text")
-    st.caption("İmatinib (Known Blocker)")
+    st.caption("Imatinib (Known Blocker)")
     st.code("CC(=O)NC1=CC=C(C=C1)O", language="text")
-    st.caption("Parasetamol (Safe / Non-blocker)")
+    st.caption("Paracetamol (Safe / Non-blocker)")
 
 
-# 3. Model Tanımı (Orijinal Kodundaki Mimarinin Birebir Aynısı)
+# 3. Model Definition (Orijinal 5-Feature Mimarisi)
 class GIN(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels):
+    def __init__(self, in_channels=5, hidden_channels=64, out_channels=2):
         super(GIN, self).__init__()
         nn1 = torch.nn.Sequential(
             torch.nn.Linear(in_channels, hidden_channels),
@@ -80,20 +80,10 @@ class GIN(torch.nn.Module):
 
 @st.cache_resource
 def load_model():
-    # Eski orijinal kodundaki in_channels ve hidden_channels boyutları
-    model = GIN(in_channels=9, hidden_channels=64, out_channels=2)
-    model.load_state_dict(torch.load("gnn_herg_model.pt", map_location=torch.device('cpu')))
-    model.eval()
-    return model
-
-try:
-    model = load_model()
-except Exception as e:
-    # Katman ismi uyumsuzluğu durumuna karşı esnek yükleyici
-    model = GIN(in_channels=9, hidden_channels=64, out_channels=2)
+    model = GIN(in_channels=5, hidden_channels=64, out_channels=2)
     state_dict = torch.load("gnn_herg_model.pt", map_location=torch.device('cpu'))
     
-    # fc -> lin isim farkı ihtimaline karşı mapping
+    # Katman ismi eşleme (fc/lin uyumsuzluğu olursa)
     new_state_dict = {}
     for k, v in state_dict.items():
         if k.startswith("fc."):
@@ -103,7 +93,9 @@ except Exception as e:
             
     model.load_state_dict(new_state_dict, strict=False)
     model.eval()
+    return model
 
+model = load_model()
 
 def smiles_to_graph(smiles):
     mol = Chem.MolFromSmiles(smiles)
@@ -111,16 +103,13 @@ def smiles_to_graph(smiles):
         return None
     features = []
     for atom in mol.GetAtoms():
+        # Modelin eğitildiği 5 temelde atom özelliği
         features.append([
             atom.GetAtomicNum(),
             atom.GetDegree(),
             atom.GetFormalCharge(),
             int(atom.GetIsAromatic()),
-            atom.GetTotalNumHs(),
-            atom.GetExplicitValence(),
-            atom.GetImplicitValence(),
-            int(atom.IsInRing()),
-            atom.GetNumRadicalElectrons()
+            atom.GetTotalNumHs()
         ])
     x = torch.tensor(features, dtype=torch.float)
     edges = []
@@ -136,9 +125,9 @@ def smiles_to_graph(smiles):
     return Data(x=x, edge_index=edge_index)
 
 
-# 4. Ana Sayfa
+# 4. Main Page View
 st.title("🧬 CardioGuard AI: GNN-Based hERG Toxicity Predictor")
-st.markdown("**Graph Neural Network (GIN) & Explainable AI (XAI)** destekli atomik düzeyde potasyum kanalı blokajı güvenlik analizi.")
+st.markdown("**Graph Neural Network (GIN) & Explainable AI (XAI)** powered atomic-level potassium channel blockade assessment.")
 
 st.markdown("---")
 
@@ -151,17 +140,17 @@ with c3:
     st.success("**Analysis Mode**\nAtom-Level XAI Contribution Mapping")
 
 st.markdown("### 🧪 Molecule Input")
-smiles_input = st.text_input("SMILES Yapısını Giriniz:", "", placeholder="Örn: CC(=O)NC1=CC=C(C=C1)O")
+smiles_input = st.text_input("Enter SMILES Structure:", "", placeholder="e.g. CC(=O)NC1=CC=C(C=C1)O")
 
 if st.button("🚀 Run Toxicity Analysis", type="primary"):
     if not smiles_input:
-        st.error("Lütfen geçerli bir SMILES kodu girin.")
+        st.error("Please enter a valid SMILES string.")
     else:
         graph_data = smiles_to_graph(smiles_input)
         mol = Chem.MolFromSmiles(smiles_input)
         
         if graph_data is None or mol is None:
-            st.error("Geçersiz SMILES formatı! Lütfen molekül kodunu kontrol edin.")
+            st.error("Invalid SMILES format! Please check the input string.")
         else:
             with st.spinner("Analyzing Molecular Graph & Generating XAI Heatmap..."):
                 batch = torch.zeros(graph_data.x.size(0), dtype=torch.long)
@@ -188,11 +177,11 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
 
                 with res_col2:
                     st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
-                    st.caption("Kırmızı/Koyu alanlar toksisiteye/blokaja en çok katkı sağlayan atomik alt-yapıları gösterir.")
+                    st.caption("Red/Darker highlights indicate atomic sub-structures contributing most to toxicity.")
                     
                     contribs = [float(atom.GetAtomicNum()) for atom in mol.GetAtoms()]
                     fig = SimilarityMaps.GetSimilarityMapFromWeights(mol, contribs, colorMap='jet')
                     fig.savefig("xai_map.png", bbox_inches='tight', dpi=200)
                     
                     image = Image.open("xai_map.png")
-                    st.image(image, use_column_width=True)
+                    st.image(image, use_container_width=True)
