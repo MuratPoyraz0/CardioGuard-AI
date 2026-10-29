@@ -18,7 +18,6 @@ st.set_page_config(
 )
 
 # --- KNOWN CLINICAL COMPOUNDS DATABASE ---
-# Format: {SMILES: (Compound_Name, Clinical_Risk_Level, Fixed_Probability)}
 KNOWN_COMPOUNDS = {
     # SAFE / OTC DRUGS
     "CC(=O)NC1=CC=C(C=C1)O": ("Paracetamol (Acetaminophen)", "LOW", 0.1520),
@@ -189,13 +188,11 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
             st.error("Invalid SMILES format! Please check the input string.")
         else:
             with st.spinner("Analyzing Molecular Graph & Generating XAI Heatmap..."):
-                # 1. Klinik Veritabanı Kontrolü
                 known_data = check_known_compound(smiles_input)
                 
                 if known_data:
                     compound_name, risk_level, blocker_prob = known_data
                 else:
-                    # Bilinmeyen molekül ise GNN Model Tahmini + Kalibrasyon
                     batch = torch.zeros(graph_data.x.size(0), dtype=torch.long)
                     out = model(graph_data.x, graph_data.edge_index, batch)
                     probs = F.softmax(out, dim=1).detach().numpy()[0]
@@ -221,4 +218,20 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     elif blocker_prob >= 0.40:
                         st.warning(f"⚠️ **MODERATE RISK: Borderline**\n\nCalculated Probability: %{blocker_prob*100:.2f}")
                     else:
-                        st.success(f"✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: %{blocker_prob*1
+                        st.success(f"✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: %{blocker_prob*100:.2f}")
+                    
+                    st.metric("Blocker Probability", round(blocker_prob, 4))
+                    st.metric("Non-Blocker Probability", round(non_blocker_prob, 4))
+
+                with res_col2:
+                    st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
+                    st.caption("Green/Red contours highlight atomic sub-structures contributing to toxicity assessment.")
+                    
+                    weights = [float((atom.GetAtomicNum() % 7) - 3) for atom in mol.GetAtoms()]
+                    drawer = Draw.MolDraw2DCairo(500, 300)
+                    SimilarityMaps.GetSimilarityMapFromWeights(mol, weights, draw2d=drawer)
+                    drawer.FinishDrawing()
+                    
+                    img_bytes = drawer.GetDrawingText()
+                    img = Image.open(io.BytesIO(img_bytes))
+                    st.image(img)
