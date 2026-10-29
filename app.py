@@ -143,45 +143,4 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
         st.error("Please enter a valid SMILES string.")
     else:
         graph_data = smiles_to_graph(smiles_input)
-        mol = Chem.MolFromSmiles(smiles_input)
-        
-        if graph_data is None or mol is None:
-            st.error("Invalid SMILES format! Please check the input string.")
-        else:
-            with st.spinner("Analyzing Molecular Graph & Generating XAI Heatmap..."):
-                batch = torch.zeros(graph_data.x.size(0), dtype=torch.long)
-                out = model(graph_data.x, graph_data.edge_index, batch)
-                probs = F.softmax(out, dim=1).detach().numpy()[0]
-                
-                blocker_prob = float(probs[1])
-                non_blocker_prob = float(probs[0])
-                
-                st.markdown("---")
-                st.markdown("## 📊 Prediction Results")
-                
-                res_col1, res_col2 = st.columns([1, 2])
-                
-                with res_col1:
-                    st.markdown("### 🎯 Risk Status")
-                    if blocker_prob > 0.5:
-                        st.error("⚠️ **HIGH RISK: hERG Blocker**\n\nCalculated Probability: " + str(round(blocker_prob * 100, 2)) + "%")
-                    else:
-                        st.success("✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: " + str(round(non_blocker_prob * 100, 2)) + "%")
-                    
-                    st.metric("Blocker Probability", str(round(blocker_prob, 4)))
-                    st.metric("Non-Blocker Probability", str(round(non_blocker_prob, 4)))
-
-                with res_col2:
-                    st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
-                    st.caption("Highlights indicate atomic sub-structures contributing to toxicity assessment.")
-                    
-                    # Renkli Isı Haritası (Similarity Map)
-                    weights = [float(atom.GetAtomicNum() % 5 + 1) for atom in mol.GetAtoms()]
-                    fig = SimilarityMaps.GetSimilarityMapFromWeights(
-                        mol, 
-                        weights, 
-                        colorMap=plt.cm.PiYG,
-                        contourLines=10
-                    )
-                    st.pyplot(fig)
-                    plt.close(fig)
+        mol = Chem.MolFromSmiles(
