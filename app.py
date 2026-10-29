@@ -81,7 +81,7 @@ def lookup_reference(mol):
 
 
 # ------------------------------------------------------------------
-# 3. MODEL (Checkpoint boyutlarına tam uyumlu: 64 -> 32 -> 1)
+# 3. MODEL (Gerçek Checkpoint Mimarisi: fc1[64, 32], fc2[32, 1])
 # ------------------------------------------------------------------
 class GIN(torch.nn.Module):
     def __init__(self, in_channels=5, hidden_channels=64, out_channels=1):
@@ -105,7 +105,6 @@ class GIN(torch.nn.Module):
         )
         self.conv3 = GINConv(nn3)
         
-        # Checkpoint içindeki ağırlıklarla birebir eşleşen katmanlar
         self.fc1 = torch.nn.Linear(64, 32)
         self.fc2 = torch.nn.Linear(32, 1)
 
@@ -176,7 +175,7 @@ def smiles_to_graph(mol):
 
 
 # ------------------------------------------------------------------
-# 5. MODEL PREDICTION (1 çıktı olduğu için tekrar Sigmoid'e döndük)
+# 5. MODEL PREDICTION
 # ------------------------------------------------------------------
 def model_predict(mol, with_saliency=False):
     data = smiles_to_graph(mol)
@@ -184,7 +183,6 @@ def model_predict(mol, with_saliency=False):
     batch = torch.zeros(x.size(0), dtype=torch.long)
     out = model(x, data.edge_index, batch)
     
-    # Tek çıkışlı regresyon/olasılık (Sigmoid)
     prob = float(torch.sigmoid(out)[0, 0].detach())
     
     saliency = None
@@ -197,7 +195,7 @@ def model_predict(mol, with_saliency=False):
 
 
 # ------------------------------------------------------------------
-# 6. RULE-BASED PHARMACOPHORE SCORE
+# 6. BİYOKİMYASAL OLARAK KALİBRE EDİLMİŞ KURAL MOTORU (RULE ENGINE)
 # ------------------------------------------------------------------
 BASIC_AMINE = Chem.MolFromSmarts(
     "[NX3;!$(N-C=[O,S,N]);!$(N-a);!$(N-S(=O)=O);!$(N-C#N);!$(N-N);!$(N-O)]"
@@ -213,38 +211,59 @@ def rule_score(mol):
     n_basic = len(mol.GetSubstructMatches(BASIC_AMINE))
     has_acid = mol.HasSubstructMatch(ACID)
 
-    score, notes = 0.15, []
+    score = 0.10  # Taban puan biyokimyasal dengeleme için 0.10 yapıldı
+    notes = []
 
+    # 1. Bazik Amin Kontrolü (En kritik hERG kuralı)
     if n_basic >= 1:
-        score += 0.25
-        notes.append(("Basic amine present", "+0.25"))
+        score += 0.30
+        notes.append(("Basic amine present (critical hERG pharmacophore)", "+0.30"))
+    else:
+        score -= 0.12
+        notes.append(("No basic amine (reduced binding probability)", "-0.12"))
+
+    # 2. Aromatik Halka Sayısı
     if arom >= 2:
         score += 0.20
-        notes.append((f"{arom} aromatic rings", "+0.20"))
+        notes.append((f"{arom} aromatic rings (pi-pi stacking potential)", "+0.20"))
     elif arom == 1:
-        score += 0.08
-        notes.append(("1 aromatic ring", "+0.08"))
-    if logp > 3.0:
-        score += 0.15
-        notes.append((f"High lipophilicity (logP {logp:.1f})", "+0.15"))
-    elif logp < 1.0:
-        score -= 0.10
-        notes.append((f"Low lipophilicity (logP {logp:.1f})", "-0.10"))
-    if mw > 350:
         score += 0.05
-        notes.append((f"Large molecule (MW {mw:.0f})", "+0.05"))
+        notes.append(("1 aromatic ring", "+0.05"))
+    else:
+        score -= 0.05
+        notes.append(("No aromatic rings", "-0.05"))
+
+    # 3. Lipofilite (logP)
+    if logp > 3.0:
+        score += 0.20
+        notes.append((f"High lipophilicity (logP {logp:.1f})", "+0.20"))
+    elif logp < 1.5:
+        score -= 0.15
+        notes.append((f"Low lipophilicity (logP {logp:.1f})", "-0.15"))
+
+    # 4. Molekül Büyüklüğü (MW)
+    if mw > 350:
+        score += 0.08
+        notes.append((f"Large molecule (MW {mw:.0f})", "+0.08"))
+    elif mw < 200:
+        score -= 0.10
+        notes.append((f"Very small molecule (MW {mw:.0f})", "-0.10"))
+
+    # 5. Polar Yüzey Alanı (TPSA)
     if tpsa < 60:
-        score += 0.10
-        notes.append((f"Low polarity (TPSA {tpsa:.0f})", "+0.10"))
-    elif tpsa > 90:
+        score += 0.08
+        notes.append((f"Low polarity (TPSA {tpsa:.0f})", "+0.08"))
+    elif tpsa > 80:
         score -= 0.10
         notes.append((f"High polarity (TPSA {tpsa:.0f})", "-0.10"))
+
+    # 6. Karboksilik Asit (Zwitterion/Negatif Yük İndirimi)
     if has_acid:
-        score -= 0.25
-        notes.append(("Carboxylic acid group", "-0.25"))
+        score -= 0.20
+        notes.append(("Carboxylic acid group (repels pore gates)", "-0.20"))
 
     desc = dict(mw=mw, logp=logp, tpsa=tpsa, arom=arom, n_basic=n_basic, acid=has_acid)
-    return float(min(max(score, 0.02), 0.98)), notes, desc
+    return float(min(max(score, 0.01), 0.99)), notes, desc
 
 
 # ------------------------------------------------------------------
@@ -448,7 +467,7 @@ with tab_single:
                 with st.expander("🧮 How was the rule-engine score calculated?", expanded=True):
                     st.table(
                         pd.DataFrame(
-                            [("Baseline", "0.15")] + res["notes"], columns=["Factor", "Contribution"]
+                            [("Baseline", "0.10")] + res["notes"], columns=["Factor", "Contribution"]
                         )
                     )
                     d = res["desc"]
