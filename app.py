@@ -5,10 +5,6 @@ from torch_geometric.data import Data
 from torch_geometric.nn import GINConv, global_mean_pool
 from rdkit import Chem
 from rdkit.Chem import Draw
-from rdkit.Chem.Draw import SimilarityMaps
-import numpy as np
-from PIL import Image
-from matplotlib import cm
 
 # 1. Page Configuration
 st.set_page_config(
@@ -136,7 +132,7 @@ with c1:
 with c2:
     st.warning("**Primary Risk**\nQT Interval Prolongation & Arrhythmia")
 with c3:
-    st.success("**Analysis Mode**\nAtom-Level XAI Contribution Mapping")
+    st.success("**Analysis Mode**\nAtom-Level Structural Analysis")
 
 st.markdown("### 🧪 Molecule Input")
 smiles_input = st.text_input("Enter SMILES Structure:", "", placeholder="e.g. CC(=O)NC1=CC=C(C=C1)O")
@@ -151,7 +147,7 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
         if graph_data is None or mol is None:
             st.error("Invalid SMILES format! Please check the input string.")
         else:
-            with st.spinner("Analyzing Molecular Graph & Generating XAI Heatmap..."):
+            with st.spinner("Analyzing Molecular Graph & Generating Visual Structure..."):
                 batch = torch.zeros(graph_data.x.size(0), dtype=torch.long)
                 out = model(graph_data.x, graph_data.edge_index, batch)
                 probs = F.softmax(out, dim=1).detach().numpy()[0]
@@ -175,8 +171,7 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.metric("Non-Blocker Probability", f"{non_blocker_prob:.4f}")
 
                 with res_col2:
-                    st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
-                    st.caption("Red/Darker highlights indicate atomic sub-structures contributing most to toxicity.")
-                    
-                    contribs = [float(atom.GetAtomicNum()) for atom in mol.GetAtoms()]
-                    fig = SimilarityMaps.
+                    st.markdown("### 🔍 2D Molecular Graph Structure")
+                    st.caption("Visual representation of the input molecule evaluated by the GIN model.")
+                    img = Draw.MolToImage(mol, size=(500, 300))
+                    st.image(img)
