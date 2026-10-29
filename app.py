@@ -53,8 +53,6 @@ st.markdown(
 # ------------------------------------------------------------------
 # 2. LITERATURE REFERENCES (labels only, NOT probabilities)
 # ------------------------------------------------------------------
-# These never feed into the score. They are shown next to the result as
-# "what is known in the literature". Please verify SMILES against PubChem.
 REFERENCE_LABELS = {
     "CC(=O)NC1=CC=C(C=C1)O": ("Paracetamol", "Non-blocker"),
     "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O": ("Ibuprofen", "Non-blocker"),
@@ -100,13 +98,15 @@ class GIN(torch.nn.Module):
             torch.nn.Linear(hidden_channels, hidden_channels),
         )
         self.conv2 = GINConv(nn2)
-        self.lin = torch.nn.Linear(hidden_channels, out_channels)
+        # Bipolar uyumluluk için hem fc hem lin adlarını destekleyecek şekilde ayarlandı
+        self.fc = torch.nn.Linear(hidden_channels, out_channels)
+        self.lin = self.fc
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
         x = global_mean_pool(x, batch)
-        return self.lin(x)
+        return self.fc(x)
 
 
 @st.cache_resource
@@ -117,14 +117,28 @@ def load_model(path="gnn_herg_model.pt"):
         return None, f"File '{path}' not found.", [], []
     try:
         state = torch.load(path, map_location="cpu")
-        state = {(k.replace("fc.", "lin.") if k.startswith("fc.") else k): v for k, v in state.items()}
-        result = model.load_state_dict(state, strict=False)
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+            
+        # Katman ismi dönüşüm eşlemeleri
+        new_state = {}
+        for k, v in state.items():
+            new_key = k
+            if k.startswith("lin."):
+                new_key = k.replace("lin.", "fc.")
+            new_state[new_key] = v
+            
+        result = model.load_state_dict(new_state, strict=False)
         missing, unexpected = list(result.missing_keys), list(result.unexpected_keys)
+        
+        # 'lin' ile 'fc' aynı katmana işaret ettiği için lin uyarısını yok sayabiliriz
+        missing = [k for k in missing if not k.startswith("lin.")]
+        
         model.eval()
         if missing:
-            return None, "Some layer weights failed to load, the model is unreliable.", missing, unexpected
+            return None, f"Some layer weights failed to load: {missing}", missing, unexpected
         return model, None, missing, unexpected
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return None, f"Could not load model: {e}", [], []
 
 
@@ -133,7 +147,6 @@ model, model_error, missing_keys, unexpected_keys = load_model()
 
 @st.cache_data
 def load_metrics(path="metrics.json"):
-    """Reads real test metrics from metrics.json. Returns None if absent."""
     if os.path.exists(path):
         with open(path) as f:
             return json.load(f)
@@ -182,16 +195,14 @@ def model_predict(mol, with_saliency=False):
     if with_saliency:
         model.zero_grad()
         out[0, 1].backward()
-        saliency = (x.grad * x).sum(dim=1).detach().numpy()  # gradient x input
+        if x.grad is not None:
+            saliency = (x.grad * x).sum(dim=1).detach().numpy()
     return prob, saliency
 
 
 # ------------------------------------------------------------------
-# 6. RULE-BASED PHARMACOPHORE SCORE (transparent, shown step by step)
+# 6. RULE-BASED PHARMACOPHORE SCORE
 # ------------------------------------------------------------------
-# hERG blockers typically carry: a protonatable basic amine, multiple aromatic
-# rings, high lipophilicity and low polarity. Acid groups and high polarity
-# lower the risk.
 BASIC_AMINE = Chem.MolFromSmarts(
     "[NX3;!$(N-C=[O,S,N]);!$(N-a);!$(N-S(=O)=O);!$(N-C#N);!$(N-N);!$(N-O)]"
 )
@@ -241,7 +252,7 @@ def rule_score(mol):
 
 
 # ------------------------------------------------------------------
-# 7. APPLICABILITY DOMAIN (does the model know this kind of molecule?)
+# 7. APPLICABILITY DOMAIN
 # ------------------------------------------------------------------
 ALLOWED = {1, 6, 7, 8, 9, 15, 16, 17, 35, 53}
 
