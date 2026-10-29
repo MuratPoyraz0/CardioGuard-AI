@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.nn import GINConv, global_mean_pool
 from rdkit import Chem
-from rdkit.Chem import Draw
 from rdkit.Chem.Draw import SimilarityMaps
+import matplotlib.pyplot as plt
 
 # 1. Page Configuration
 st.set_page_config(
@@ -175,4 +175,7 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.caption("Green/Red contours highlight atomic sub-structures contributing to toxicity assessment.")
                     
                     weights = [float((atom.GetAtomicNum() % 7) - 3) for atom in mol.GetAtoms()]
-                    d2
+                    fig, ax = plt.subplots(figsize=(6, 4))
+                    SimilarityMaps.GetSimilarityMapFromWeights(mol, weights, ax=ax)
+                    st.pyplot(fig)
+                    plt.close(fig)
