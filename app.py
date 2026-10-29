@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.nn import GINConv, global_mean_pool
 from rdkit import Chem
+from rdkit.Chem import Draw
 from rdkit.Chem.Draw import SimilarityMaps
 import matplotlib.pyplot as plt
 
@@ -143,4 +144,11 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
         st.error("Please enter a valid SMILES string.")
     else:
         graph_data = smiles_to_graph(smiles_input)
-        mol = Chem.MolFromSmiles(
+        mol = Chem.MolFromSmiles(smiles_input)
+        
+        if graph_data is None or mol is None:
+            st.error("Invalid SMILES format! Please check the input string.")
+        else:
+            with st.spinner("Analyzing Molecular Graph & Generating XAI Heatmap..."):
+                batch = torch.zeros(graph_data.x.size(0), dtype=torch.long)
+                out = model(graph_data
