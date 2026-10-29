@@ -81,7 +81,7 @@ def lookup_reference(mol):
 
 
 # ------------------------------------------------------------------
-# 3. MODEL (Gerçek checkpoint boyutlarıyla 1:1 eşleşen mimari)
+# 3. MODEL (Checkpoint boyutları olan [64 -> 32 -> 1] mimarisine ayarlandı)
 # ------------------------------------------------------------------
 class GIN(torch.nn.Module):
     def __init__(self, in_channels=5, hidden_channels=64, out_channels=1):
@@ -105,9 +105,9 @@ class GIN(torch.nn.Module):
         )
         self.conv3 = GINConv(nn3)
         
-        # Checkpoint: fc1 in=64, out=32 | fc2 in=32, out=1
-        self.fc1 = torch.nn.Linear(hidden_channels, 32)
-        self.fc2 = torch.nn.Linear(32, out_channels)
+        # Checkpoint: fc1 weight [32, 64], fc2 weight [1, 32]
+        self.fc1 = torch.nn.Linear(64, 32)
+        self.fc2 = torch.nn.Linear(32, 1)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
@@ -184,7 +184,6 @@ def model_predict(mol, with_saliency=False):
     x = data.x.clone().requires_grad_(with_saliency)
     batch = torch.zeros(x.size(0), dtype=torch.long)
     out = model(x, data.edge_index, batch)
-    # Tek çıkışlı (Sigmoid) olasılık tahmini
     prob = float(torch.sigmoid(out)[0, 0].detach())
     saliency = None
     if with_saliency:
