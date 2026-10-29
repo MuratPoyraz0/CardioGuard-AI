@@ -81,7 +81,7 @@ def lookup_reference(mol):
 
 
 # ------------------------------------------------------------------
-# 3. MODEL
+# 3. MODEL (Gerçek eğitilmiş mimariyle 1:1 uyumlu)
 # ------------------------------------------------------------------
 class GIN(torch.nn.Module):
     def __init__(self, in_channels=5, hidden_channels=64, out_channels=2):
@@ -98,13 +98,23 @@ class GIN(torch.nn.Module):
             torch.nn.Linear(hidden_channels, hidden_channels),
         )
         self.conv2 = GINConv(nn2)
-        self.lin = torch.nn.Linear(hidden_channels, out_channels)
+        nn3 = torch.nn.Sequential(
+            torch.nn.Linear(hidden_channels, hidden_channels),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_channels, hidden_channels),
+        )
+        self.conv3 = GINConv(nn3)
+        
+        self.fc1 = torch.nn.Linear(hidden_channels, hidden_channels)
+        self.fc2 = torch.nn.Linear(hidden_channels, out_channels)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
+        x = F.relu(self.conv3(x, edge_index))
         x = global_mean_pool(x, batch)
-        return self.lin(x)
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
 
 
 @st.cache_resource
@@ -118,21 +128,7 @@ def load_model(path="gnn_herg_model.pt"):
         if isinstance(state, dict) and "state_dict" in state:
             state = state["state_dict"]
             
-        model_state = model.state_dict()
-        model_keys = list(model_state.keys())
-        state_values = list(state.values())
-        
-        # Ağırlıklar ile model anahtarlarını sırasıyla eşleştir (Name mismatch çözüm adımı)
-        new_state = {}
-        if len(state_values) == len(model_keys):
-            for new_key, val in zip(model_keys, state_values):
-                new_state[new_key] = val
-        else:
-            for k, v in state.items():
-                new_k = k.replace("fc.", "lin.").replace("classifier.", "lin.")
-                new_state[new_k] = v
-                
-        model.load_state_dict(new_state, strict=True)
+        model.load_state_dict(state, strict=True)
         model.eval()
         return model, None, [], []
     except Exception as e:
@@ -330,7 +326,7 @@ with st.sidebar:
             st.caption(f"Missing keys: {missing_keys}")
     else:
         st.success("Model weights loaded")
-        st.caption("Architecture: 2-layer GIN · 5 atom features · TDC hERG data")
+        st.caption("Architecture: 3-layer GIN · 5 atom features · TDC hERG data")
 
     st.markdown("### 📊 Validation")
     if metrics:
