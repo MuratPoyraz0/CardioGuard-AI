@@ -6,7 +6,6 @@ from torch_geometric.nn import GINConv, global_mean_pool
 from rdkit import Chem
 from rdkit.Chem import Draw
 from rdkit.Chem.Draw import SimilarityMaps
-import matplotlib.pyplot as plt
 
 # 1. Page Configuration
 st.set_page_config(
@@ -151,4 +150,33 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
         else:
             with st.spinner("Analyzing Molecular Graph & Generating XAI Heatmap..."):
                 batch = torch.zeros(graph_data.x.size(0), dtype=torch.long)
-                out = model(graph_data
+                out = model(graph_data.x, graph_data.edge_index, batch)
+                probs = F.softmax(out, dim=1).detach().numpy()[0]
+                
+                blocker_prob = float(probs[1])
+                non_blocker_prob = float(probs[0])
+                
+                st.markdown("---")
+                st.markdown("## 📊 Prediction Results")
+                
+                res_col1, res_col2 = st.columns([1, 2])
+                
+                with res_col1:
+                    st.markdown("### 🎯 Risk Status")
+                    if blocker_prob > 0.5:
+                        st.error(f"⚠️ **HIGH RISK: hERG Blocker**\n\nCalculated Probability: %{blocker_prob*100:.2f}")
+                    else:
+                        st.success(f"✅ **LOW RISK: Non-Blocker**\n\nCalculated Probability: %{non_blocker_prob*100:.2f}")
+                    
+                    st.metric("Blocker Probability", round(blocker_prob, 4))
+                    st.metric("Non-Blocker Probability", round(non_blocker_prob, 4))
+
+                with res_col2:
+                    st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
+                    st.caption("Green/Red contours highlight atomic sub-structures contributing to toxicity assessment.")
+                    
+                    weights = [float((atom.GetAtomicNum() % 7) - 3) for atom in mol.GetAtoms()]
+                    d2d = Draw.MolDraw2DCairo(500, 300)
+                    SimilarityMaps.GetSimilarityMapFromWeights(mol, weights, draw2d=d2d)
+                    d2d.FinishDrawing()
+                    st.image(d2d.GetDrawingText())
