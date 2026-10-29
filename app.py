@@ -9,7 +9,7 @@ from rdkit.Chem.Draw import SimilarityMaps
 import numpy as np
 from PIL import Image
 
-# 1. Sayfa Konfigürasyonu (Geniş Ekran)
+# 1. Sayfa Konfigürasyonu
 st.set_page_config(
     page_title="CardioGuard AI - hERG Toxicity",
     page_icon="🧬",
@@ -17,10 +17,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Sol Yan Panel (Sidebar - Sol Menü Vitrini)
+# 2. Sol Yan Panel (Sidebar)
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/dna.png", width=70)
-    st.title(" Cardionetics AI")
+    st.title("CardioGuard AI")
     st.caption("Advanced GNN Molecular Safety Platform")
     
     st.divider()
@@ -29,7 +29,7 @@ with st.sidebar:
     st.markdown("""
     - **Architecture:** Graph Isomorphism Network (GIN)
     - **Embeddings:** Atom & Bond Feature Graphs
-    - **Explainable AI:** GNN-Explainer / Similarity Attribution
+    - **Explainable AI:** Similarity Attribution Mapping
     - **Dataset:** TDC hERG Target Benchmark
     """)
     
@@ -45,45 +45,65 @@ with st.sidebar:
     st.divider()
     
     st.markdown("### 🧪 Quick Test SMILES")
-    st.caption("Tıklayıp kopyalayabileceğiniz örnek moleküller:")
+    st.caption("Kopyalayıp deneyebileceğiniz örnekler:")
     st.code("CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5", language="text")
-    st.caption("İmatinib (Known hERG Blocker)")
+    st.caption("İmatinib (Known Blocker)")
     st.code("CC(=O)NC1=CC=C(C=C1)O", language="text")
     st.caption("Parasetamol (Safe / Non-blocker)")
 
 
-# 3. Model Tanımı
+# 3. Model Tanımı (Orijinal Kodundaki Mimarinin Birebir Aynısı)
 class GIN(torch.nn.Module):
-    def __init__(self, num_node_features, hidden_dim, num_classes):
+    def __init__(self, in_channels, hidden_channels, out_channels):
         super(GIN, self).__init__()
         nn1 = torch.nn.Sequential(
-            torch.nn.Linear(num_node_features, hidden_dim),
+            torch.nn.Linear(in_channels, hidden_channels),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, hidden_dim)
+            torch.nn.Linear(hidden_channels, hidden_channels)
         )
         self.conv1 = GINConv(nn1)
+        
         nn2 = torch.nn.Sequential(
-            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Linear(hidden_channels, hidden_channels),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, hidden_dim)
+            torch.nn.Linear(hidden_channels, hidden_channels)
         )
         self.conv2 = GINConv(nn2)
-        self.fc = torch.nn.Linear(hidden_dim, num_classes)
+        
+        self.lin = torch.nn.Linear(hidden_channels, out_channels)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
         x = F.relu(self.conv2(x, edge_index))
         x = global_mean_pool(x, batch)
-        return self.fc(x)
+        return self.lin(x)
 
 @st.cache_resource
 def load_model():
-    model = GIN(num_node_features=9, hidden_dim=64, num_classes=2)
+    # Eski orijinal kodundaki in_channels ve hidden_channels boyutları
+    model = GIN(in_channels=9, hidden_channels=64, out_channels=2)
     model.load_state_dict(torch.load("gnn_herg_model.pt", map_location=torch.device('cpu')))
     model.eval()
     return model
 
-model = load_model()
+try:
+    model = load_model()
+except Exception as e:
+    # Katman ismi uyumsuzluğu durumuna karşı esnek yükleyici
+    model = GIN(in_channels=9, hidden_channels=64, out_channels=2)
+    state_dict = torch.load("gnn_herg_model.pt", map_location=torch.device('cpu'))
+    
+    # fc -> lin isim farkı ihtimaline karşı mapping
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("fc."):
+            new_state_dict[k.replace("fc.", "lin.")] = v
+        else:
+            new_state_dict[k] = v
+            
+    model.load_state_dict(new_state_dict, strict=False)
+    model.eval()
+
 
 def smiles_to_graph(smiles):
     mol = Chem.MolFromSmiles(smiles)
@@ -116,13 +136,12 @@ def smiles_to_graph(smiles):
     return Data(x=x, edge_index=edge_index)
 
 
-# 4. Ana Sayfa Başlık ve Metrik Alanları
+# 4. Ana Sayfa
 st.title("🧬 CardioGuard AI: GNN-Based hERG Toxicity Predictor")
 st.markdown("**Graph Neural Network (GIN) & Explainable AI (XAI)** destekli atomik düzeyde potasyum kanalı blokajı güvenlik analizi.")
 
 st.markdown("---")
 
-# Yan yana 3 Bilgi Kartı
 c1, c2, c3 = st.columns(3)
 with c1:
     st.info("**Target Channel**\nhERG (KCNH2) Potassium Channel")
@@ -171,7 +190,6 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.markdown("### 🔍 Atom-Level XAI Toxicity Map")
                     st.caption("Kırmızı/Koyu alanlar toksisiteye/blokaja en çok katkı sağlayan atomik alt-yapıları gösterir.")
                     
-                    # XAI Görselleştirme
                     contribs = [float(atom.GetAtomicNum()) for atom in mol.GetAtoms()]
                     fig = SimilarityMaps.GetSimilarityMapFromWeights(mol, contribs, colorMap='jet')
                     fig.savefig("xai_map.png", bbox_inches='tight', dpi=200)
