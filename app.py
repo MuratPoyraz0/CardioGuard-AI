@@ -81,10 +81,10 @@ def lookup_reference(mol):
 
 
 # ------------------------------------------------------------------
-# 3. MODEL (Gerçek eğitilmiş mimariyle 1:1 uyumlu)
+# 3. MODEL (Gerçek checkpoint boyutlarıyla 1:1 eşleşen mimari)
 # ------------------------------------------------------------------
 class GIN(torch.nn.Module):
-    def __init__(self, in_channels=5, hidden_channels=64, out_channels=2):
+    def __init__(self, in_channels=5, hidden_channels=64, out_channels=1):
         super().__init__()
         nn1 = torch.nn.Sequential(
             torch.nn.Linear(in_channels, hidden_channels),
@@ -105,8 +105,9 @@ class GIN(torch.nn.Module):
         )
         self.conv3 = GINConv(nn3)
         
-        self.fc1 = torch.nn.Linear(hidden_channels, hidden_channels)
-        self.fc2 = torch.nn.Linear(hidden_channels, out_channels)
+        # Checkpoint: fc1 in=64, out=32 | fc2 in=32, out=1
+        self.fc1 = torch.nn.Linear(hidden_channels, 32)
+        self.fc2 = torch.nn.Linear(32, out_channels)
 
     def forward(self, x, edge_index, batch):
         x = F.relu(self.conv1(x, edge_index))
@@ -183,11 +184,12 @@ def model_predict(mol, with_saliency=False):
     x = data.x.clone().requires_grad_(with_saliency)
     batch = torch.zeros(x.size(0), dtype=torch.long)
     out = model(x, data.edge_index, batch)
-    prob = float(F.softmax(out, dim=1)[0, 1].detach())
+    # Tek çıkışlı (Sigmoid) olasılık tahmini
+    prob = float(torch.sigmoid(out)[0, 0].detach())
     saliency = None
     if with_saliency:
         model.zero_grad()
-        out[0, 1].backward()
+        out[0, 0].backward()
         if x.grad is not None:
             saliency = (x.grad * x).sum(dim=1).detach().numpy()
     return prob, saliency
