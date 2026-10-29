@@ -16,14 +16,9 @@ st.set_page_config(
 )
 
 # 2. Sidebar Navigation
-# 2. Sidebar Navigation
 with st.sidebar:
     st.markdown("## 🧬 CardioGuard AI")
     st.caption("Advanced GNN Molecular Safety Platform")
-    
-    st.divider()
-    
-    st.markdown("### 🛠️ Model Details")
     
     st.divider()
     
@@ -180,7 +175,4 @@ if st.button("🚀 Run Toxicity Analysis", type="primary"):
                     st.caption("Green/Red contours highlight atomic sub-structures contributing to toxicity assessment.")
                     
                     weights = [float((atom.GetAtomicNum() % 7) - 3) for atom in mol.GetAtoms()]
-                    d2d = Draw.MolDraw2DCairo(500, 300)
-                    SimilarityMaps.GetSimilarityMapFromWeights(mol, weights, draw2d=d2d)
-                    d2d.FinishDrawing()
-                    st.image(d2d.GetDrawingText())
+                    d2
